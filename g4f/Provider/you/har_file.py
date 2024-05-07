@@ -8,6 +8,8 @@ import random
 from ...requests import StreamSession, raise_for_status
 from ...errors import MissingRequirementsError
 from ... import debug
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options as ChromeOptions
 
 class NoValidHarFileError(Exception):
     ...
@@ -23,7 +25,6 @@ class arkReq:
 telemetry_url = "https://telemetry.stytch.com/submit"
 public_token = "public-token-live-507a52ad-7e69-496b-aee0-1c9863c7c819"
 chatArks: list = None
-
 def readHAR():
     dirPath = "./"
     harPath = []
@@ -72,7 +73,6 @@ async def create_telemetry_id(proxy: str = None):
     if chatArks is None:
         chatArks = readHAR()
     return await sendRequest(random.choice(chatArks), proxy)
-
 async def get_telemetry_ids(proxy: str = None) -> list:
     try:
         return [await create_telemetry_id(proxy)]
@@ -80,18 +80,23 @@ async def get_telemetry_ids(proxy: str = None) -> list:
         if debug.logging:
             print(e)
     if debug.logging:
-        print('Getting telemetry_id for you.com with nodriver')
-    try:
-        from nodriver import start
-    except ImportError:
-        raise MissingRequirementsError('Add .har file from you.com or install "nodriver" package | pip install -U nodriver')
-    page = None
-    try:
-        browser = await start()
-        page = await browser.get("https://you.com")
+        print('Getting telemetry_id for you.com with Selenium WebDriver')
 
-        while not await page.evaluate('"GetTelemetryID" in this'):
-            await page.sleep(1)
+    options = ChromeOptions()
+    options.add_argument("--headless")
+    driver = webdriver.Chrome(options=options)
+
+    try:
+        driver.get("https://you.com")
+
+        while not driver.execute_script('return "GetTelemetryID" in window;'):
+            time.sleep(1)
+
+        telemetry_id = driver.execute_script(f'return window.GetTelemetryID("{public_token}", "{telemetry_url}");')
+
+        return [telemetry_id]
+    finally:
+        driver.quit()
 
         async def get_telemetry_id():
             return await page.evaluate(
